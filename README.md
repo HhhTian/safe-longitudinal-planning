@@ -1,6 +1,6 @@
 # Safe Longitudinal Planning
 
-A simulation framework for benchmarking longitudinal planning and control algorithms under realistic disturbances (actuator delay, sensor noise, packet loss). Covers the full pipeline — from IDM-based reference generation (behavioral planning) through MPC trajectory optimization with safety constraints (local planning) to PID tracking control — and compares **8 algorithm variants** across **5 driving scenarios**, with a focus on safety constraint formulations.
+A simulation framework for benchmarking longitudinal planning and control algorithms under realistic disturbances (actuator delay, sensor noise, planner timeout). Covers the full pipeline — from IDM-based reference generation (behavioral planning) through MPC trajectory optimization with safety constraints (local planning) to PID tracking control — and compares **8 algorithm variants** across **5 driving scenarios**, with a focus on safety constraint formulations.
 
 ## Motivation
 
@@ -50,7 +50,7 @@ The three ablation dimensions in the benchmark (Delay, Safety, Cost Shaping) cor
 
 ## Driving Scenarios
 
-Five scenarios with distinct threat profiles, each using piecewise-constant acceleration with 0.3 s linear ramp transitions at phase boundaries for physically realistic jerk.
+Five scenarios with distinct threat profiles. Cut-in and adversarial scenarios use linear acceleration ramps (10–15 m/s³ jerk limit) at phase transitions; ghost cut-out scenarios feature constant-velocity leader dynamics and a stationary obstacle.
 
 ### Scenario A — Highway Cut-in & Flee
 
@@ -64,13 +64,13 @@ A vehicle cuts in at 50 km/h, brakes to a full stop, waits, then restarts.
 
 ![Urban Stop](assets/gifs/urban_stop.gif)
 
-### Scenario C — Ghost Cut-out (Far, 180 m)
+### Scenario C — Ghost Cut-out (Far, 146 m)
 
-Ego follows a lead vehicle at 80 km/h. The leader suddenly swerves out, revealing a stationary disabled vehicle 146 m ahead. 
+Ego follows a lead vehicle at 80 km/h. The leader suddenly swerves out, revealing a stationary disabled vehicle 146 m ahead.
 
 ![Ghost Cut-out Far](assets/gifs/ghost_cutout_far.gif)
 
-### Scenario D — Ghost Cut-out (Panic, 75 m)
+### Scenario D — Ghost Cut-out (Panic, 48 m)
 
 Same setup but the stationary obstacle is only 48 m ahead — forces emergency braking at the physical limit.
 
@@ -93,7 +93,7 @@ Aggressive brake → accel → brake → flee sequence designed to break constan
 │   ├── solvers.py                     # QP smoother, PID tracker, MPC-OSQP, MPC-iLQR, cost functions
 │   ├── controllers.py                 # 8 pre-configured planning & control configurations
 │   ├── experiments.py                 # Simulation runner, metrics computation
-│   └── visualization.py              # Dashboard renderer (S-T, v-t, a-t, TTC⁻¹, radar)
+│   └── visualization.py               # Dashboard renderer (S-T, v-t, a-t, TTC⁻¹, radar)
 │
 ├── analysis/                          # Standalone analysis & visualization scripts
 │   ├── gen_scenario_gifs.py           # Animated GIF generator (single / compare modes)
@@ -116,11 +116,9 @@ The framework implements a three-layer pipeline and benchmarks 8 configurations 
 
 ```
 IDM Reference Generator  →  Local Planner (MPC / QP)  →  Tracking Controller (PID)
-   (behavioral layer        (trajectory optimization       (low-level execution)
-    replace DP, could        with safety constraints)
-    be replaced by  
-    Reinforcement Learning
-    layer)
+  (behavioral layer,          (trajectory optimization       (low-level execution)
+   replaces DP in              with safety constraints)
+   simulation)
 ```
 
 **Dimension A — Delay Mitigation** (How does the planner handle actuator delay?)
@@ -142,21 +140,29 @@ IDM Reference Generator  →  Local Planner (MPC / QP)  →  Tracking Controller
 
 **Dimension C — Cost Shaping** (Does nonlinear cost in the planner improve comfort?)
 
-| Configuration | Solver | Safety Cost | Smoothness |
-|--------------|--------|------------|------------|
-| `MPC_Aug_Soft` | OSQP (QP) | Linear + quadratic slack | C⁰ at boundary |
-| `iLQR_Aug_Quad` | iLQR (DDP) | Quadratic penalty | C⁰ continuous, C¹ discontinuous |
-| `iLQR_Aug_Exp` | iLQR (DDP) | Exponential (APF-inspired) | C∞ smooth everywhere |
+| Configuration | Solver | Safety Cost | Effective Response at Boundary |
+|--------------|--------|------------|-------------------------------|
+| `MPC_Aug_Soft` | OSQP (QP) | Linear + quadratic slack | Gradient jump (linear term causes sudden braking onset) |
+| `iLQR_Aug_Quad` | iLQR | Quadratic penalty | Gradient continuous, Hessian jumps (zero response in safe region) |
+| `iLQR_Aug_Exp` | iLQR | Exponential (APF-inspired) | C∞ smooth (non-zero anticipatory response everywhere) |
 
 ## Key Technical Details
 
 **Augmented state for delay compensation.** The actuator delay τ is modeled by extending the state vector to ξ = [x, v, u\_{k-1}, …, u\_{k-τ}]ᵀ, embedding the command pipeline into the state-space model so the MPC planner can optimize over commands already in flight.
 
-**RSS-based safety distance.** The planner's safety distance is computed from RSS kinematics: d\_safe = d\_min + max(0, d\_ego\_stop − d\_obs\_stop), ensuring the ego can always stop in time under maximum braking.
+**RSS-based safety distance.** The planner's safety distance follows RSS kinematics with reaction delay:
 
-**Exponential safety cost.** The cost w·exp(g/L) provides C∞ smooth anticipatory braking in the planning horizon — non-zero gradient everywhere. As L→0, the effective multiplier converges to the CBF's piecewise-linear response while maintaining solver-friendly smoothness.
+```
+d_ego_stop = v_ego × t_ρ + v_ego² / (2 × a_max)     (includes reaction time t_ρ)
+d_obs_stop = v_obs² / (2 × a_max)                     (obstacle brakes immediately)
+d_safe     = d_min + max(0, d_ego_stop − d_obs_stop)
+```
 
-**IDM reference generator with planner artifacts.** The behavioral layer uses IDM to simulate real DP planner behavior: distance-dependent perception noise, Doppler velocity noise, dual-mode acceleration quantization, Zero-Order Hold at 5 Hz, and stochastic packet loss (5%).
+This ensures the ego can always stop in time even accounting for reaction delay, using the same maximum braking capability `a_max` for both vehicles.
+
+**Exponential safety cost.** The cost w·exp(g/L) provides C∞ smooth anticipatory braking in the planning horizon — non-zero gradient everywhere, including in the safe region. As L→0, the effective multiplier converges to the CBF's piecewise-linear response while maintaining solver-friendly smoothness. Exponent clipping (`np.clip(g/L, -20, 10)`) prevents numerical overflow. Gauss-Newton Hessian approximation and Tikhonov regularization (eigenvalue correction when Q\_uu becomes non-positive-definite) stabilize the iLQR backward pass.
+
+**IDM reference generator with planner artifacts.** The behavioral layer uses IDM to simulate real DP planner behavior: distance-dependent position noise (base σ + 2% of range), velocity measurement noise, dual-mode acceleration quantization (fine grid for normal braking, coarse grid for panic braking), Zero-Order Hold between planning frames (5 Hz), and stochastic planner timeout / frame drop (5% probability, holds previous command).
 
 ## Evaluation Metrics
 
@@ -209,6 +215,13 @@ python analysis/plot_safe_cost.py            # 3D cost landscapes
 python analysis/plot_3d_trajectories.py      # Trajectories on cost surfaces
 python analysis/plot_pareto.py               # Pareto frontier sweep
 ```
+
+## Future Directions
+
+- Replace the IDM behavioral layer with a learned policy (e.g., reinforcement learning) while retaining the MPC safety layer as a downstream filter
+- Tighter uncertainty quantification for MPC constraint tightening
+- Learned cost functions for adaptive safety constraints
+- Integration as a safety fallback layer for end-to-end planners
 
 ## License
 
