@@ -1,0 +1,6 @@
+numpy>=2.0
+scipy>=1.13
+matplotlib>=3.9
+osqp>=1.0
+optuna>=4.5
+Pillow>=11.0
