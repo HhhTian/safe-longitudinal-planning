@@ -125,31 +125,31 @@ Five scenarios with distinct threat profiles. Cut-in and adversarial scenarios u
 
 A vehicle at 100 km/h cuts into ego's lane (ego at 120 km/h), brakes, then accelerates past and departs.
 
-<p align="center"><img src="assets/gifs/highway_cutin.gif" width="85%"/></p>
+<p align="center"><img src="assets/gifs/highway_cutin.gif" width="100%"/></p>
 
 ### Scenario B — Urban Stop & Go
 
 A vehicle cuts in at 50 km/h, brakes to a full stop, waits, then restarts.
 
-<p align="center"><img src="assets/gifs/urban_stop.gif" width="85%"/></p>
+<p align="center"><img src="assets/gifs/urban_stop.gif" width="100%"/></p>
 
 ### Scenario C — Ghost Cut-out (Far, 146 m)
 
 Ego follows a lead vehicle at 80 km/h. The leader suddenly swerves out, revealing a stationary disabled vehicle 146 m ahead.
 
-<p align="center"><img src="assets/gifs/ghost_cutout_far.gif" width="85%"/></p>
+<p align="center"><img src="assets/gifs/ghost_cutout_far.gif" width="100%"/></p>
 
 ### Scenario D — Ghost Cut-out (Panic, 48 m)
 
 Same setup but the stationary obstacle is only 48 m ahead — forces emergency braking at the physical limit.
 
-<p align="center"><img src="assets/gifs/ghost_cutout_panic.gif" width="85%"/></p>
+<p align="center"><img src="assets/gifs/ghost_cutout_panic.gif" width="100%"/></p>
 
 ### Scenario E — Adversarial Stop & Go
 
 Aggressive brake → accel → brake → flee sequence designed to stress-test jerk attenuation.
 
-<p align="center"><img src="assets/gifs/adversarial_stopgo.gif" width="85%"/></p>
+<p align="center"><img src="assets/gifs/adversarial_stopgo.gif" width="100%"/></p>
 
 ## Architecture
 
