@@ -25,3 +25,6 @@ Thumbs.db
 # Optuna
 *.db
 *.log
+
+# But keep result figures for README
+!assets/figures/*.png
