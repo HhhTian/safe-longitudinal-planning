@@ -45,13 +45,13 @@ The IDM planner (replacing DP in simulation) introduces realistic artifacts: dis
 
 <!-- Figure: IDM planner debug output showing ideal → noisy → quantized → ZOH degradation -->
 <!-- Source: run main.py, screenshot the first plot from demo_planner.plot_debug() -->
-![IDM Planner Artifacts](assets/figures/idm_planner_artifacts.png)
+<p align="center"><img src="assets/figures/idm_planner_artifacts.png" width="85%"/></p>
 
 MPC with augmented state absorbs delay and noise through its prediction horizon, reducing jerk RMS by an order of magnitude vs PID (97 → 5.5 m/s³).
 
 <!-- Figure: Batch 1 (Delay Immunity) in Scenario A — velocity subplot -->
 <!-- Source: run main.py, screenshot the v-t subplot from "Scenario A | Batch 1: Delay Immunity" -->
-![Delay Comparison](assets/figures/delay_comparison_vt.png)
+<p align="center"><img src="assets/figures/delay_comparison_vt.png" width="85%"/></p>
 
 ### Stage 1 → 2: Adding safety constraints
 
@@ -59,7 +59,7 @@ Without safety constraints, MPC follows the reference into collision when the re
 
 <!-- Figure: Batch 2 (Constraint Paradigm) in Scenario D — S-T or v-t subplot -->
 <!-- Source: run main.py, screenshot the S-T subplot from "Scenario D | Batch 2: Constraint Paradigm" -->
-![Safety Comparison](assets/figures/safety_comparison_st.png)
+<p align="center"><img src="assets/figures/safety_comparison_st.png" width="85%"/></p>
 
 ### Safety distance model: time-gap vs RSS
 
@@ -125,31 +125,31 @@ Five scenarios with distinct threat profiles. Cut-in and adversarial scenarios u
 
 A vehicle at 100 km/h cuts into ego's lane (ego at 120 km/h), brakes, then accelerates past and departs.
 
-![Highway Cut-in](assets/gifs/highway_cutin.gif)
+<p align="center"><img src="assets/gifs/highway_cutin.gif" width="85%"/></p>
 
 ### Scenario B — Urban Stop & Go
 
 A vehicle cuts in at 50 km/h, brakes to a full stop, waits, then restarts.
 
-![Urban Stop](assets/gifs/urban_stop.gif)
+<p align="center"><img src="assets/gifs/urban_stop.gif" width="85%"/></p>
 
 ### Scenario C — Ghost Cut-out (Far, 146 m)
 
 Ego follows a lead vehicle at 80 km/h. The leader suddenly swerves out, revealing a stationary disabled vehicle 146 m ahead.
 
-![Ghost Cut-out Far](assets/gifs/ghost_cutout_far.gif)
+<p align="center"><img src="assets/gifs/ghost_cutout_far.gif" width="85%"/></p>
 
 ### Scenario D — Ghost Cut-out (Panic, 48 m)
 
 Same setup but the stationary obstacle is only 48 m ahead — forces emergency braking at the physical limit.
 
-![Ghost Cut-out Panic](assets/gifs/ghost_cutout_panic.gif)
+<p align="center"><img src="assets/gifs/ghost_cutout_panic.gif" width="85%"/></p>
 
 ### Scenario E — Adversarial Stop & Go
 
 Aggressive brake → accel → brake → flee sequence designed to stress-test jerk attenuation.
 
-![Adversarial Stop & Go](assets/gifs/adversarial_stopgo.gif)
+<p align="center"><img src="assets/gifs/adversarial_stopgo.gif" width="85%"/></p>
 
 ## Architecture
 
