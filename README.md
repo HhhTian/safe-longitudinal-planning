@@ -1,52 +1,121 @@
 # Safe Longitudinal Planning
 
-A simulation framework for benchmarking longitudinal planning and control algorithms under realistic disturbances (actuator delay, sensor noise, planner timeout). Covers the full pipeline — from IDM-based reference generation (behavioral planning) through MPC trajectory optimization with safety constraints (local planning) to PID tracking control — and compares **8 algorithm variants** across **5 driving scenarios**, with a focus on safety constraint formulations.
+A simulation framework for benchmarking longitudinal planning and control under realistic disturbances (actuator delay, sensor noise, planner timeout). Covers the full pipeline — from IDM-based reference generation through MPC trajectory optimization with safety constraints to PID tracking control — and compares **8 algorithm variants** across **5 driving scenarios**.
 
 ## Motivation
 
-Production longitudinal planning pipelines (e.g., DP + QP + PID) often perform well in simulation but degrade under real-world conditions: actuator delay causes tracking oscillation, sensor noise corrupts reference trajectories, and hard safety constraints lead to solver infeasibility during sudden cut-ins. This project systematically investigates these failure modes and evaluates how augmented-state MPC frameworks with different safety cost formulations can improve planning robustness in extreme scenarios.
+Production longitudinal planning pipelines (DP + QP + PID) are computationally efficient but exhibit systematic failures under aggressive cut-in scenarios with realistic system latency (0.3 s), perception noise, and planner timeout: oscillatory braking, insufficient deceleration, and delayed response. These are not tuning deficiencies but structural limitations — the planner has no knowledge of the system's delay, and the controller has no awareness of the planner's safety intent.
 
 ## Approach: Progressive Architecture Evolution
 
-The investigation follows a step-by-step evolution from a production baseline to an advanced safety-aware planner, where each step addresses a specific failure mode discovered in the previous stage:
+Starting from the production baseline, one component is replaced at a time. Each step addresses a specific failure mode discovered in the previous stage, and every change is evaluated under identical disturbance conditions.
 
 ```
 Stage 0 (Baseline)       DP  →  QP Smoothing  →  PID Tracking
-                         │         │                  │
-                         │    acceleration        feedback
-                         │    profile smoothing   control
-                         │         │                  │
+                         │
 Problem discovered:      │    QP+PID cannot compensate 0.3s actuator delay
-                         │    → tracking oscillation in real-vehicle tests
+                         │    → tracking oscillation under delay + noise
                          ▼
 Stage 1 (Delay)          DP  →  MPC (Augmented State)
-                         │         │
-                         │    replaces QP+PID with a single MPC that
-                         │    embeds the delay pipeline [u_{k-1},...,u_{k-τ}]
-                         │    into its state-space model
-                         │         │
+                         │         replaces QP+PID; embeds the delay pipeline
+                         │         [u_{k-1},...,u_{k-τ}] into the state-space model
+                         │
 Problem discovered:      │    pure tracking MPC has no obstacle awareness
                          │    → crashes in sudden cut-in scenarios
                          ▼
 Stage 2 (Safety)         DP  →  MPC + Safety Constraints
-                         │         │
-                         │    adds RSS-based safety distance constraints
-                         │    Hard constraints → infeasible under surprise cut-ins
-                         │    Soft constraints (slack) → feasible but jerky
-                         │         │
-Problem discovered:      │    OSQP (QP solver) requires linear constraints
-                         │    → safety cost must be piecewise, causing C⁰ kink
-                         │    → discontinuous braking response
+                         │         adds RSS-based safety distance constraints
+                         │         Hard → infeasible under surprise cut-ins
+                         │         Soft (slack) → feasible but jerky
+                         │
+Problem discovered:      │    QP solver freezes d_safe(v) over the horizon
+                         │    → cannot capture velocity–safety coupling
+                         │    → piecewise penalty causes gradient discontinuity
                          ▼
 Stage 3 (Cost Shaping)   DP  →  MPC + Exponential Safety Cost (iLQR)
-                                   │
-                              switch from OSQP to iLQR solver, enabling
-                              C∞ smooth exponential cost w·exp(g/L)
-                              → anticipatory braking before boundary
-                              → no derivative discontinuity for the solver
+                                   switch from OSQP to iLQR solver, enabling
+                                   C∞ smooth exponential cost w·exp(g/L)
+                                   → anticipatory braking before boundary
+                                   → iLQR recalculates d_safe(v) at each step
 ```
 
-The three ablation dimensions in the benchmark (Delay, Safety, Cost Shaping) correspond directly to these stages, allowing controlled comparison at each step.
+### Stage 0 → 1: Reference trajectory degradation and delay compensation
+
+The IDM planner (replacing DP in simulation) introduces realistic artifacts: distance-dependent position noise, velocity measurement noise, dual-mode acceleration quantization, Zero-Order Hold at 5 Hz, and stochastic planner timeout (5%). The downstream tracker must handle this degraded reference under 0.3 s actuator delay.
+
+<!-- Figure: IDM planner debug output showing ideal → noisy → quantized → ZOH degradation -->
+<!-- Source: run main.py, screenshot the first plot from demo_planner.plot_debug() -->
+![IDM Planner Artifacts](assets/figures/idm_planner_artifacts.png)
+
+MPC with augmented state absorbs delay and noise through its prediction horizon, reducing jerk RMS by an order of magnitude vs PID (97 → 5.5 m/s³).
+
+<!-- Figure: Batch 1 (Delay Immunity) in Scenario A — velocity subplot -->
+<!-- Source: run main.py, screenshot the v-t subplot from "Scenario A | Batch 1: Delay Immunity" -->
+![Delay Comparison](assets/figures/delay_comparison_vt.png)
+
+### Stage 1 → 2: Adding safety constraints
+
+Without safety constraints, MPC follows the reference into collision when the reference is wrong (e.g., ghost cut-out). Hard constraints cause solver infeasibility under surprise cut-ins. Soft constraints (slack variables) guarantee feasibility but produce jerky response due to the penalty's gradient discontinuity at the safety boundary.
+
+<!-- Figure: Batch 2 (Constraint Paradigm) in Scenario D — S-T or v-t subplot -->
+<!-- Source: run main.py, screenshot the S-T subplot from "Scenario D | Batch 2: Constraint Paradigm" -->
+![Safety Comparison](assets/figures/safety_comparison_st.png)
+
+### Safety distance model: time-gap vs RSS
+
+The safety function d_safe matters as much as the cost function. A fixed time-gap model (d_safe = s₀ + T·v) ignores relative kinematics — it overreacts at high speed and underreacts near standstill. The RSS-based kinematic model (accounting for ego reaction time and both vehicles' braking distances) triggers earlier, brakes more gradually, and eliminates the braking oscillation caused by abrupt constraint activation.
+
+<!-- Source: your report Figure 4.1 (left) and Figure 4.2 (right), both Scenario D Batch 3 -->
+<table>
+<tr>
+<td width="50%"><img src="assets/figures/safety_timegap_scenD.png" width="100%"/><br><sub>Time-gap: even iLQR Exp spends 1.1 s in danger zone</sub></td>
+<td width="50%"><img src="assets/figures/safety_rss_scenD.png" width="100%"/><br><sub>RSS: iLQR Exp achieves 0.0 s danger time</sub></td>
+</tr>
+</table>
+
+Switching from time-gap to RSS with the same controller (iLQR Exp) reduced danger time from 1.1 s to 0.0 s — a larger improvement than switching from quadratic to exponential cost with the same safety function.
+
+### Stage 2 → 3: Exponential cost with iLQR
+
+Switching from OSQP to iLQR enables two improvements: the solver recalculates the velocity-dependent safety distance d_safe(v) at each backward-pass step (capturing the coupling that QP must freeze), and the C∞ smooth exponential cost provides anticipatory braking before the safety boundary is reached.
+
+As shown in the RSS comparison above (right panel), in the most demanding scenario (ghost cut-out at 75 m), iLQR with exponential cost is the only configuration that achieves **0.0 s danger time**, while OSQP Soft spends 1.0 s and iLQR Quad spends 0.4 s in the danger zone.
+
+## Key Findings
+
+Across 8 configurations × 5 scenarios under identical disturbances (0.3 s delay, perception noise, 5% planner timeout):
+
+**1. MPC over PID.** Jerk RMS drops by an order of magnitude (97 → 5.5 m/s³). PID with forward prediction performs *worse* than standard PID under delay+noise — open-loop delay compensation with an inaccurate model amplifies rather than attenuates disturbances.
+
+**2. Safety constraints: insurance policy.** Redundant in benign scenarios (all controllers achieve 0.0 s danger time), decisive at the physical limit (Scenario D: danger time ranges from 2.3 s without safety to 0.0 s with exponential cost).
+
+**3. Exponential cost advantage is concentrated at the physical boundary.** In Scenario D, iLQR Exp achieves 0.0 s danger time vs 0.4 s (iLQR Quad) and 1.0 s (OSQP Soft). In benign scenarios, the differences are negligible.
+
+**4. Safety boundary design matters as much as cost shape.** Switching from fixed time-gap to RSS-based d_safe — without changing the controller — reduced danger time from 1.1 s to 0.0 s. A larger improvement than switching cost functions alone.
+
+**5. Solver structure matters independently of cost shape.** iLQR Quad outperforms OSQP Soft (0.4 s vs 1.0 s) despite similar quadratic penalty shapes, because iLQR captures the velocity–safety-distance coupling that QP solvers must freeze within the horizon.
+
+### Scenario D Results (Ghost Cut-out, Panic Braking Limit)
+
+| Configuration | Min Dist | Jerk RMS | Tracking Err | Danger Time |
+|--------------|----------|----------|-------------|-------------|
+| PID Standard | 10.0 m | 27.6 | 0.13 | 1.9 s |
+| PID Forward | 2.9 m | 45.2 | 0.17 | 3.8 s |
+| MPC Aug (no safety) | 9.6 m | 4.2 | 0.14 | 2.3 s |
+| MPC Hard | 9.7 m | 16.9 | 0.11 | 1.5 s |
+| MPC Soft | 9.7 m | 13.8 | 0.10 | 1.0 s |
+| iLQR Quad | 9.7 m | 12.0 | 0.08 | 0.4 s |
+| **iLQR Exp** | **10.3 m** | **9.1** | **0.06** | **0.0 s** |
+
+## Analytical Framework
+
+Four safety formulations (CBF hard constraint, quadratic penalty, log barrier, exponential penalty) are placed in a unified optimization framework. All four produce u* = λ·G, where λ is the effective multiplier and G the control sensitivity. The formulations differ entirely in how λ depends on the safety margin h. Three properties explain the experimental hierarchy:
+
+- **Anticipation:** whether λ > 0 when the system is still safe (h > 0). CBF and quadratic provide zero gradient; exponential and log barrier do not.
+- **Recovery strength:** how fast λ grows under constraint violation (h < 0). Log barrier is most aggressive (singularity), exponential is strong (exponential growth), quadratic is moderate (linear growth), CBF is gradual (fixed fraction per step).
+- **Smoothness:** compatibility with Newton-type solvers. CBF has a C⁰ kink, quadratic is C¹ (Hessian jumps), log barrier is C∞ but undefined for h ≤ 0, exponential is C∞ everywhere.
+
+The exponential penalty is the only formulation that simultaneously provides anticipation, C∞ smoothness, full-domain definition, and strong recovery.
 
 ## Driving Scenarios
 
@@ -78,7 +147,7 @@ Same setup but the stationary obstacle is only 48 m ahead — forces emergency b
 
 ### Scenario E — Adversarial Stop & Go
 
-Aggressive brake → accel → brake → flee sequence designed to break constant-velocity prediction models and stress-test jerk attenuation.
+Aggressive brake → accel → brake → flee sequence designed to stress-test jerk attenuation.
 
 ![Adversarial Stop & Go](assets/gifs/adversarial_stopgo.gif)
 
@@ -105,7 +174,9 @@ Aggressive brake → accel → brake → flee sequence designed to break constan
 │   ├── plot_3d_trajectories.py        # Trajectories overlaid on cost surfaces
 │   └── plot_pareto.py                 # Pareto frontier sweep (comfort vs agility)
 │
-├── assets/gifs/                       # Generated scenario animations
+├── assets/
+│   ├── gifs/                          # Scenario animations
+│   └── figures/                       # Result screenshots from main.py
 ├── requirements.txt
 └── .gitignore
 ```
