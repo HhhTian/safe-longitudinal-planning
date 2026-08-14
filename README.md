@@ -45,13 +45,13 @@ The IDM planner (replacing DP in simulation) introduces realistic artifacts: dis
 
 <!-- Figure: IDM planner debug output showing ideal → noisy → quantized → ZOH degradation -->
 <!-- Source: run main.py, screenshot the first plot from demo_planner.plot_debug() -->
-<p align="center"><img src="assets/figures/idm_planner_artifacts.png" width="85%"/></p>
+<p align="center"><img src="assets/figures/idm_planner_artifacts.png" width="700"/></p>
 
 MPC with augmented state absorbs delay and noise through its prediction horizon, reducing jerk RMS by an order of magnitude vs PID (97 → 5.5 m/s³).
 
 <!-- Figure: Batch 1 (Delay Immunity) in Scenario A — velocity subplot -->
 <!-- Source: run main.py, screenshot the v-t subplot from "Scenario A | Batch 1: Delay Immunity" -->
-<p align="center"><img src="assets/figures/delay_comparison_vt.png" width="85%"/></p>
+<p align="center"><img src="assets/figures/delay_comparison_vt.png" width="700"/></p>
 
 ### Stage 1 → 2: Adding safety constraints
 
@@ -59,19 +59,21 @@ Without safety constraints, MPC follows the reference into collision when the re
 
 <!-- Figure: Batch 2 (Constraint Paradigm) in Scenario D — S-T or v-t subplot -->
 <!-- Source: run main.py, screenshot the S-T subplot from "Scenario D | Batch 2: Constraint Paradigm" -->
-<p align="center"><img src="assets/figures/safety_comparison_st.png" width="85%"/></p>
+<p align="center"><img src="assets/figures/safety_comparison_st.png" width="700"/></p>
 
 ### Safety distance model: time-gap vs RSS
 
 The safety function d_safe matters as much as the cost function. A fixed time-gap model (d_safe = s₀ + T·v) ignores relative kinematics — it overreacts at high speed and underreacts near standstill. The RSS-based kinematic model (accounting for ego reaction time and both vehicles' braking distances) triggers earlier, brakes more gradually, and eliminates the braking oscillation caused by abrupt constraint activation.
 
-<!-- Source: your report Figure 4.1 (left) and Figure 4.2 (right), both Scenario D Batch 3 -->
-<table>
-<tr>
-<td width="50%"><img src="assets/figures/safety_timegap_scenD.png" width="100%"/><br><sub>Time-gap: even iLQR Exp spends 1.1 s in danger zone</sub></td>
-<td width="50%"><img src="assets/figures/safety_rss_scenD.png" width="100%"/><br><sub>RSS: iLQR Exp achieves 0.0 s danger time</sub></td>
-</tr>
-</table>
+<!-- Source: your report Figure 4.1 (upper) and Figure 4.2 (lower), both Scenario D Batch 3 -->
+<p align="center">
+<img src="assets/figures/safety_timegap_scenD.png" width="700"/><br>
+<sub>Time-gap safety model: even iLQR Exp spends 1.1 s in danger zone</sub>
+</p>
+<p align="center">
+<img src="assets/figures/safety_rss_scenD.png" width="700"/><br>
+<sub>RSS safety model: iLQR Exp achieves 0.0 s danger time</sub>
+</p>
 
 Switching from time-gap to RSS with the same controller (iLQR Exp) reduced danger time from 1.1 s to 0.0 s — a larger improvement than switching from quadratic to exponential cost with the same safety function.
 
