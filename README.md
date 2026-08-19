@@ -1,3 +1,5 @@
+📄 **Paper:** [doi.org/10.5281/zenodo.22014579](https://doi.org/10.5281/zenodo.22014579)
+
 # Safe Longitudinal Planning
 
 A simulation framework for benchmarking longitudinal planning and control under realistic disturbances (actuator delay, sensor noise, planner timeout). Covers the full pipeline — from IDM-based reference generation through MPC trajectory optimization with safety constraints to PID tracking control — and compares **8 algorithm variants** across **5 driving scenarios**.
